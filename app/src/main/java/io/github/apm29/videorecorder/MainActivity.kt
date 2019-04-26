@@ -2,8 +2,10 @@ package io.github.apm29.videorecorder
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.hardware.Camera
 import android.media.CamcorderProfile
+import android.media.MediaCodec
 import android.media.MediaMetadataRetriever
 import android.media.MediaRecorder
 import android.support.v7.app.AppCompatActivity
@@ -14,8 +16,11 @@ import android.view.SurfaceHolder
 import android.widget.Toast
 import kotlinx.android.synthetic.main.activity_main.*
 import java.io.File
+import java.io.FileOutputStream
 
 class MainActivity : AppCompatActivity() {
+
+    private val reqCode = 1023
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -36,8 +41,12 @@ class MainActivity : AppCompatActivity() {
         if (!storage || !camera || !audio) {
             ActivityCompat.requestPermissions(
                 this,
-                arrayOf(Manifest.permission.CAMERA, Manifest.permission.WRITE_EXTERNAL_STORAGE,Manifest.permission.RECORD_AUDIO),
-                1023
+                arrayOf(
+                    Manifest.permission.CAMERA,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                    Manifest.permission.RECORD_AUDIO
+                ),
+                reqCode
             )
         } else {
             init()
@@ -75,19 +84,31 @@ class MainActivity : AppCompatActivity() {
 //        }
 
         mediaRecorder = MediaRecorder()
+        camera.setDisplayOrientation(90)// use for set the orientation of the preview
+        mediaRecorder?.setOrientationHint(90)
         val path = startRecord(camera, holder)
         var startTime = System.currentTimeMillis()
-        btn_capture.isEnabled =true
+        btn_capture.isEnabled = true
         btn_capture.setOnClickListener {
-            stopRecord()
+            //stopRecord()
+            mediaRecorder?.stop()
             val retriever = MediaMetadataRetriever()
             retriever.setDataSource(path)
-            val time = (System.currentTimeMillis() - startTime) * 1000-100
+            val time = (System.currentTimeMillis() - startTime) * 1000
             println(time)
             val bitmap = retriever.getFrameAtTime(time)
-            image.setImageBitmap(bitmap)
-            startRecord(camera,holder)
+            println("${bitmap.height}:${bitmap.width}")
+            startRecord(camera, holder)
             startTime = System.currentTimeMillis()
+            image.setImageBitmap(bitmap)
+            val fos = FileOutputStream(
+                File(
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES),
+                    "imageCaptured.jpg"
+                )
+            )
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 90, fos)
+
         }
     }
 
@@ -106,7 +127,6 @@ class MainActivity : AppCompatActivity() {
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES).absolutePath + "/record.mp4"
         mediaRecorder?.setOutputFile(path)
         mediaRecorder?.setPreviewDisplay(holder?.surface)
-        mediaRecorder?.setOrientationHint(90)
         mediaRecorder?.prepare()
         initialized = true
         mediaRecorder?.start()
@@ -116,12 +136,17 @@ class MainActivity : AppCompatActivity() {
     private fun initCameraParam() {
         camera?.apply {
             //parameters.setPreviewSize(640, 480)
+            this.setPreviewDisplay(surface.holder)
+            this.setDisplayOrientation(90)
+            this.setPreviewCallback { data, camera ->
+                println("data = [${data.size}]")
+            }
         }
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == 1023 && grantResults.all {
+        if (requestCode == reqCode && grantResults.all {
                 it == PackageManager.PERMISSION_GRANTED
             }) {
             init()
